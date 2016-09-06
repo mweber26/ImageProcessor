@@ -1060,7 +1060,13 @@
 
             if (this.img3 != null)
             {
-                if (this.comp[0].c == 'R' && this.comp[1].c == 'G' && this.comp[2].c == 'B')
+                if (this.nComp == 4)
+                {
+                    this.ApplyBlack(this.width, this.height, image);
+                    //we are 3 component now
+                    this.nComp = 3;
+                }
+                else if (this.comp[0].c == 'R' && this.comp[1].c == 'G' && this.comp[2].c == 'B')
                 {
                     this.ConvertDirectToRGB(this.width, this.height, image);
                 }
@@ -1072,6 +1078,49 @@
             else
             {
                 throw new ImageFormatException("Missing SOS marker.");
+            }
+        }
+
+        private void ApplyBlack(int width, int height, ImageBase image)
+        {
+            if (!adobeTransformValid)
+                throw new ImageFormatException("unknown color model: 4-component JPEG doesn't have Adobe APP14 metadata");
+
+            if (adobeTransform != adobeTransformUnknown)
+            {
+                int cScale = comp[0].h / comp[1].h;
+
+                float[] pixels = new float[width * height * 4];
+
+                Parallel.For(
+                    0,
+                    height,
+                    y =>
+                    {
+                        int yo = img3.get_row_y_offset(y);
+                        int co = img3.get_row_c_offset(y);
+
+                        for (int x = 0; x < width; x++)
+                        {
+                            byte yy = img3.pix_y[yo + x];
+                            byte cb = img3.pix_cb[co + (x / cScale)];
+                            byte cr = img3.pix_cr[co + (x / cScale)];
+
+                            int index = ((y * width) + x) * 4;
+
+                            // Implicit casting FTW
+                            Color color = new YCbCr(yy, cb, cr);
+                            int black = 255 - blackPix[y * blackStride + x];
+                            Color finalc = new Cmyk(color.R, color.G, color.B, black / 255f);
+
+                            pixels[index] = finalc.R;
+                            pixels[index + 1] = finalc.G;
+                            pixels[index + 2] = finalc.B;
+                            pixels[index + 3] = 1.0f;
+                        }
+                    });
+
+                image.SetPixels(width, height, pixels);
             }
         }
 
@@ -1291,7 +1340,7 @@
 
             bits = new bits_class();
 
-            byte mcu = 0;
+            int mcu = 0;
             byte expectedRST = rst0Marker;
 
             // b is the decoded coefficients, in natural (not zig-zag) order.
@@ -1479,10 +1528,10 @@
                                         break;
 
                                     case 3:
-                                        // dst, stride = blackPix[8*(by*blackStride+bx):], blackStride
-                                        // break;
-                                        // TODO: Check this.
-                                        throw new ImageFormatException("Too many components");
+                                        dst = blackPix;
+                                        stride = blackStride;
+                                        offset = 8 * (by * blackStride + bx);
+                                        break;
 
                                     default:
                                         throw new ImageFormatException("Too many components");
@@ -1685,11 +1734,13 @@
                 var m = new img_ycbcr(8 * h0 * mxx, 8 * v0 * myy, ratio);
                 img3 = m.subimage(0, 0, width, height);
 
-                /*if d.nComp == 4 {
-                    h3, v3 := d.comp[3].h, d.comp[3].v
-                    d.blackPix = make([]byte, 8*h3*mxx*8*v3*myy)
-                    d.blackStride = 8 * h3 * mxx
-                }*/
+                if (nComp == 4)
+                {
+                    int h3 = comp[3].h;
+                    int v3 = comp[3].v;
+                    blackPix = new byte[8*h3*mxx*8*v3*myy];
+                    blackStride = 8 * h3 * mxx;
+                }
             }
         }
     }

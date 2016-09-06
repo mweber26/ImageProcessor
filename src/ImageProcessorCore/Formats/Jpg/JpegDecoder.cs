@@ -127,7 +127,7 @@ namespace ImageProcessorCore.Formats
             }
             else if (decoder.nComp != 3)
             {
-                throw new NotSupportedException("JpegDecoder only supports RGB and Grayscale color spaces.");
+                throw new NotSupportedException("JpegDecoder only supports RGB, CMYK and Grayscale color spaces.");
             }
         }
 
